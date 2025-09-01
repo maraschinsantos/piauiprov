@@ -1,0 +1,1439 @@
+---
+title: "Sedimentology"
+author: "João Miguel Maraschin Santos"
+date: "2025-04-08"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+#1. Library
+```{r}
+library(tidyverse)
+library(provenance)
+library(ggtern)
+library(broom)
+library(compositions)
+library(vegan)
+library(ggrepel)
+```
+
+#2. SED - loading data
+```{r}
+colour <- c(
+  # Channel fill
+  "PR-05"   = "#E69F00",
+  "PR-09"   = "#D98C00",
+  "PR-17"   = "#F0A500",
+  "BP-18"   = "#CC7A00",
+  "BP-19B"  = "#FFB000", 
+  "BP-19C"  = "#B36B00", 
+  "BP-21A"  = "#FFA319", 
+  "BP-21C"  = "#E69F00",
+  "BP-22A"  = "#E58E1B",
+  
+  # Simple aeolian dunes
+  "PR-01"   = "#F5D76E",
+  "BP-19E"  = "#F8E08C",
+  "BP-20C"  = "#F2CD60",
+  "BP-21E"  = "#EFCB72",
+  "BP-23B"  = "#F5DA84",
+  "BP-23D"  = "#EED26A",
+  "BP-24A"  = "#FAE29D",
+  
+  # Flood plain
+  "BP-19D"  = "#EEDFC5",
+  "BP-22B"  = "#E6D3B8",
+  
+  # Terminal lobes
+  "BP-20A"  = "#A8E6A3",
+  
+  # Interdune
+  "BP-21D"  = "#76C7C0",
+  "BP-23A"  = "#6EBDB7",
+  
+  # Compose aeolian dunes
+  "BP-22C"  = "#F4A261",
+  "BP-24C"  = "#E98E50",
+  
+  # Aeolian sandsheet
+  "BP-23C"  = "#4CAF50",
+  "BP-24B"  = "#43A047")
+
+coloursize <- c(
+  "fine" = "darkred",
+  "medium" = "navy",
+  "coarse" = "darkgreen"
+)
+
+grainsize <- read.csv("./MSc/granulometria_pesados.csv") %>% 
+  as_tibble() %>% 
+  mutate(
+    class = factor(sample.1, levels = c("fine", "medium", "coarse")),
+    total = as.numeric(gsub(",", ".", total)),
+    dist = as.numeric(gsub(",", ".", dist)),
+    facies = as.factor(facies),
+    sample = fct_reorder(sample, as.numeric(facies))
+  )
+
+
+```
+
+
+#3. SED - total for each class
+```{r}
+GB1 <- grainsize %>% 
+  group_by(facies, sample, sample.1) %>%
+   mutate(facies = case_when(
+    facies %in% c("Terminal lobes", "Flood plain") ~ "Overbank deposits",
+    facies %in% c("Compose aeolian dunes", "Simple aeolian dunes") ~ "Aeolian dunes",
+    TRUE ~ facies
+  )) %>%
+  mutate(sample.1 = factor(sample.1, levels = c("fine", "medium", "coarse"))) %>%
+  summarise(total = sum(total), .groups = "drop") %>% 
+  group_by(facies, sample) %>% 
+  mutate(prop = total / sum(total)) %>% 
+  ggplot(aes(x = sample, y = prop, fill = sample.1)) +
+  geom_col(position = "stack") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(x = NULL, y = "Proportion (%)", fill = "Grain size class") +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    legend.position = "bottom"
+  ) +
+  facet_wrap(~ facies, scales = "free_y", drop = TRUE) + 
+  scale_fill_manual(values = coloursize)+
+  coord_flip() +
+  labs(x = "Facies", 
+       y = "Total (%)",
+       title = "Grainsize distribution",
+       subtitle = "For each facies")
+
+GB1
+
+grainsize_stats_total <- grainsize %>% 
+  mutate(
+    facies = case_when(
+      facies %in% c("Terminal lobes", "Flood plain") ~ "Overbank deposits",
+      facies %in% c("Compose aeolian dunes", "Simple aeolian dunes") ~ "Aeolian dunes",
+      TRUE ~ facies
+    ),
+    sample.1 = factor(sample.1, levels = c("fine", "medium", "coarse"))
+  ) %>%
+  group_by(facies, sample, sample.1) %>%
+  summarise(total = sum(total), .groups = "drop") %>%
+  group_by(facies, sample) %>%
+  mutate(prop = total / sum(total)) %>%
+  group_by(facies, sample.1) %>%
+  summarise(
+    media = mean(prop),
+    desvio_padrao = sd(prop),
+    .groups = "drop"
+  )
+
+write.csv(grainsize_stats_total, "./gs_total_stats.csv")
+```
+
+#4. HM - for each class
+```{r}
+GB2 <- grainsize %>% 
+    group_by(facies, sample, sample.1) %>%
+   mutate(facies = case_when(
+    facies %in% c("Terminal lobes", "Flood plain") ~ "Overbank deposits",
+    facies %in% c("Compose aeolian dunes", "Simple aeolian dunes") ~ "Aeolian dunes",
+    TRUE ~ facies
+  )) %>%
+  mutate(sample.1 = factor(sample.1, levels = c("fine", "medium", "coarse"))) %>% 
+  group_by(facies, sample, sample.1) %>%
+  summarise(dist = sum(dist), .groups = "drop") %>% 
+  group_by(facies, sample) %>% 
+  mutate(prop = dist / sum(dist)) %>% 
+  ggplot(aes(x = sample, y = prop, fill = sample.1)) +
+  geom_col(position = "stack") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(x = NULL, y = "Proportion (%)", fill = "Grain size class") +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    legend.position = "bottom"
+  ) +
+  facet_wrap(~ facies, scales = "free_y", drop = TRUE) + 
+  scale_fill_manual(values = coloursize) +
+   labs(x = "Facies", 
+       y = "Heavy Minerals (%)",
+       title = "Heavy minerals distribution",
+       subtitle = "For each facies") +
+  coord_flip()
+
+GB2
+
+
+grainsize_summary_hm <- grainsize %>% 
+  mutate(
+    facies = case_when(
+      facies %in% c("Terminal lobes", "Flood plain") ~ "Overbank deposits",
+      facies %in% c("Compose aeolian dunes", "Simple aeolian dunes") ~ "Aeolian dunes",
+      TRUE ~ facies
+    ),
+    sample.1 = factor(sample.1, levels = c("fine", "medium", "coarse"))
+  ) %>%
+  group_by(facies, sample, sample.1) %>%
+  summarise(hm = sum(dist), .groups = "drop") %>%
+  group_by(facies, sample) %>%
+  mutate(prop = hm / sum(hm))
+
+grainsize_stats_hm <- grainsize_summary_hm %>%
+  group_by(facies, sample.1) %>%
+  summarise(
+    media = mean(prop),
+    desvio_padrao = sd(prop),
+    .groups = "drop"
+  )
+
+
+write.csv(grainsize_stats_hm, "./gs_hm_stats.csv")
+```
+
+#5. HM x Total
+```{r}
+stats_total_renamed <- grainsize_stats_total %>%
+  rename(media_total = media, desvio_total = desvio_padrao)
+
+stats_hm_renamed <- grainsize_stats_hm %>%
+  rename(media_hm = media, desvio_hm = desvio_padrao)
+
+comp_data <- inner_join(stats_total_renamed, stats_hm_renamed, by = c("facies", "sample.1"))
+
+dados_analise <- comp_data %>%
+  mutate(
+    razao_media = media_total / media_hm,
+    cv_total = ifelse(media_total > 0, desvio_total / media_total, 0),
+    cv_hm = ifelse(media_hm > 0, desvio_hm / media_hm, 0),
+    amostra_id = paste(facies, sample.1, sep=" - ")
+  )
+
+#print(dados_analise)
+
+colfacies <- c(
+  "Aeolian dunes" = "#EFCB72",
+  "Channel fill" = "#CC7A00",
+  "Overbank deposits" = "#A8E6A3",
+  "Aeolian sandsheet" = "#4CAF50",
+  "Interdune" = "#6EBDB7"
+)
+
+ggplot(dados_analise, aes(x = cv_hm, y = cv_total, color = facies)) +
+  geom_point(size = 4, alpha = 0.8) +
+  geom_abline(linetype = "dashed", color = "red") +
+  geom_text(aes(label = sample.1), vjust = -1, size = 3) +
+  labs(
+    title = "Relative Variability Analysis by Facies",
+    subtitle = "Points above the isovariability line (y=x) indicate higher variability in the bulk sample",
+    x = "CV of Heavy Mineral Fraction",
+    y = "CV of Bulk Sample",
+    color = "Facies association"
+  ) +
+  scale_color_manual(values = colfacies)+
+  theme_classic() +
+  coord_fixed(ratio = 1, xlim = range(c(dados_analise$cv_hm, dados_analise$cv_total)), ylim = range(c(dados_analise$cv_hm, dados_analise$cv_total)))
+
+```
+
+
+#6.Box plot - each class
+```{r}
+boxtot <- grainsize %>%
+  mutate(facies = case_when(
+    facies %in% c("Terminal lobes", "Flood plain") ~ "Overbank deposits",
+    facies %in% c("Compose aeolian dunes", "Simple aeolian dunes") ~ "Aeolian dunes",
+    TRUE ~ as.character(facies)
+  )) %>%
+  mutate(sample.1 = factor(sample.1, levels = c("fine", "medium", "coarse"))) %>%
+  group_by(facies, sample, sample.1) %>%
+  summarise(total_classe = sum(total), .groups = "drop") %>%
+  group_by(facies, sample) %>%
+  mutate(prop = total_classe / sum(total_classe)) %>%
+  ungroup()
+
+colfacies <- c(
+  "Aeolian dunes" = "#EFCB72",
+  "Channel fill" = "#CC7A00",
+  "Overbank deposits" = "#A8E6A3",
+  "Aeolian sandsheet" = "#4CAF50",
+  "Interdune" = "#6EBDB7"
+)
+
+totbox <- ggplot(boxtot, aes(x = facies, y = prop, fill = facies)) +
+  geom_violin(trim = FALSE, alpha = 0.8) +
+  geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
+  facet_wrap(~ sample.1, ncol = 3) +
+  scale_fill_manual(values = colfacies) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Distribuição Granulométrica (Violin Plot) por Fácies e Classe",
+    subtitle = "Cada painel representa uma classe de tamanho de grão",
+    x = "Associação de Fácies",
+    y = "Proporção da Amostra (%)",
+    fill = "Fácies"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+    strip.background = element_rect(fill = "#f0f0f0", color = "grey"),
+    strip.text = element_text(face = "bold")
+  )
+
+totbox
+
+hmbox <- dados_para_violin_hm <- grainsize %>%
+  mutate(facies = case_when(
+    facies %in% c("Terminal lobes", "Flood plain") ~ "Overbank deposits",
+    facies %in% c("Compose aeolian dunes", "Simple aeolian dunes") ~ "Aeolian dunes",
+    TRUE ~ as.character(facies)
+  )) %>%
+  mutate(sample.1 = factor(sample.1, levels = c("fine", "medium", "coarse"))) %>%
+  group_by(facies, sample, sample.1) %>%
+  summarise(hm_classe = sum(dist), .groups = "drop") %>%
+  group_by(facies, sample) %>%
+  mutate(prop = hm_classe / sum(hm_classe)) %>%
+  ungroup()
+
+colfacies <- c(
+  "Aeolian dunes" = "#EFCB72",
+  "Channel fill" = "#CC7A00",
+  "Overbank deposits" = "#A8E6A3",
+  "Aeolian sandsheet" = "#4CAF50",
+  "Interdune" = "#6EBDB7"
+)
+
+boxhm <- ggplot(hmbox, aes(x = facies, y = prop, fill = facies)) +
+  geom_violin(trim = FALSE, alpha = 0.8) +
+  geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
+  facet_wrap(~ sample.1, ncol = 3) +
+  scale_fill_manual(values = colfacies) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Distribuição de Minerais Pesados (Violin Plot) por Fácies e Classe",
+    subtitle = "Cada painel representa uma classe de tamanho de grão",
+    x = "Associação de Fácies",
+    y = "Proporção da Amostra (%)",
+    fill = "Fácies"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+    strip.background = element_rect(fill = "#f0f0f0", color = "grey"),
+    strip.text = element_text(face = "bold")
+  )
+
+boxhm
+```
+
+#7. geom_line - HM e Total
+```{r}
+GS1 <- grainsize %>% 
+    group_by(facies, sample, sample.1) %>%
+   mutate(facies = case_when(
+    facies %in% c("Terminal lobes", "Flood plain") ~ "Overbank deposits",
+    TRUE ~ facies
+  )) %>%
+  ggplot(aes(x = class,
+             y = total,
+             color = sample,
+             group = sample)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~ facies, scales = "free_y") +  
+  scale_y_continuous(breaks = seq(0, 100, 20)) +  
+  theme_classic() +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    strip.text = element_text(size = 10, face = "bold")) +
+  scale_color_manual(values = colour)+
+  labs(x = "Facies", 
+       y = "Total (%)",
+       title = "Grainsize distribution",
+       subtitle = "For each facies")
+    
+       GS1
+
+GS2 <- grainsize %>% 
+    group_by(facies, sample, sample.1) %>%
+   mutate(facies = case_when(
+    facies %in% c("Terminal lobes", "Flood plain") ~ "Overbank deposits",
+    TRUE ~ facies
+  )) %>%
+  ggplot(aes(x=class,
+             y=dist,
+             color=sample,
+             group=sample))+
+      geom_point()+
+      geom_line()+
+      facet_wrap(~ facies, scales = "free_y") +  
+    scale_y_continuous(limits=c(0,100))+
+    theme_classic() +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    strip.text = element_text(size = 10, face = "bold")) +
+  scale_color_manual(values = colour)+
+  labs(x = "Facies", 
+       y = "Heavy Minerals (%)",
+       title = "Heavy minerals distribution",
+       subtitle = "For each facies")
+
+       GS2
+       
+```
+
+#8. 3-way MDE
+```{r}
+#Compositional para MDS
+hmds <- read.csv("./MSc/HM_raw/minerals.csv") %>% 
+  as_tibble()
+
+formatar_composicao <- function(df) {
+  df %>%
+    mutate(sample_id = str_extract(sample, "BP-\\d+[A-Z]?|PR-\\d+")) %>%
+    filter(!is.na(sample_id)) %>%
+    count(sample_id, mineral, name = "count") %>%
+    pivot_wider(
+      id_cols = sample_id,
+      names_from = mineral,
+      values_from = count,
+      values_fill = 0
+    )
+}
+
+hmds_fine <- hmds %>% 
+  filter(
+    str_detect(sample, "_100") &
+    !str_detect(sample, "_180_100")
+  ) %>% 
+  mutate(count = 1) %>% 
+  pivot_wider(
+      id_cols = sample,
+      names_from = mineral,
+      values_from = count,
+      values_fill = 0, 
+      values_fn = sum 
+  ) %>% 
+  mutate(sample = str_remove(sample,"_100"))
+
+hmds_medium <- hmds %>% 
+  filter(str_detect(sample, "_180_100")) %>% 
+  mutate(count = 1) %>% 
+  pivot_wider(
+      id_cols = sample,
+      names_from = mineral,
+      values_from = count,
+      values_fill = 0, 
+      values_fn = sum 
+  ) %>% 
+  mutate(sample = str_remove(sample,"_180_100"))
+
+hmds_coarse <- hmds %>% 
+  filter(str_detect(sample, "_180$")) %>% 
+  mutate(count = 1) %>% 
+  pivot_wider(
+      id_cols = sample,
+      names_from = mineral,
+      values_from = count,
+      values_fill = 0, 
+      values_fn = sum 
+  ) %>%
+  mutate(sample = str_remove(sample,"_180"))
+
+write.csv(hmds_fine, "./hmds_fine.csv", row.names = TRUE)
+write.csv(hmds_medium, "./hmds_medium.csv", row.names = TRUE)
+write.csv(hmds_coarse, "./hmds_coarse.csv", row.names = TRUE)
+
+#filter HMDS
+unique_samples <- bind_rows(hmds_fine, hmds_medium, hmds_coarse) %>%  
+  pull(sample) %>%                                                    
+  unique() %>%                                                        
+  as.character()     
+
+
+#GS para MDS
+grainsize_csv <- grainsize %>% 
+ mutate(sample = str_replace_all(sample, "-", "_")) %>%
+  filter(sample %in% (unique_samples %>% str_replace_all("-", "_"))) %>%
+  select(sample, sample.1, total) %>%
+  pivot_wider(
+    names_from = sample.1,
+    values_fill = NA,
+    values_from = total
+  )
+
+write.csv(grainsize_csv, "./grainsize_csv.csv")
+
+#HM para MDS
+hm_csv <- grainsize %>%
+  mutate(sample = as.character(sample)) %>%
+  mutate(sample = str_replace_all(sample, "-", "_")) %>%
+  filter(sample %in% unique_samples) %>%
+  select(sample, sample.1, dist) %>%
+  pivot_wider(
+      id_cols = sample,
+      names_from = sample.1,
+      values_from = dist,
+      values_fill = 0
+  )
+
+write.csv(hm_csv, "./hm_csv.csv", row.names = TRUE)
+
+
+#Facies para MDS
+facies_csv <- grainsize %>% 
+  mutate(sample = str_replace_all(sample, "-", "_")) %>%
+  filter(sample %in% (unique_samples %>% str_replace_all("-", "_"))) %>%
+  select(sample, facies) %>%
+  distinct(sample, facies) %>%
+  mutate(facies = case_when(
+    facies %in% c("Compose aeolian dunes", "Simple aeolian dunes", "Aeolian dunes") ~ "Aeolian dunes",
+    facies %in% c("Flood plain", "Terminal lobes") ~ "Overbank deposits",
+    .default = as.character(facies)
+  ))
+
+write.csv(facies_csv, "./fac_csv.csv", row.names = TRUE)
+
+gs<-provenance::read.compositional("./grainsize_csv.csv")
+hm<-provenance::read.compositional("./hm_csv.csv")
+
+facies<-provenance::read.compositional("./fac_csv.csv")
+
+mdsfine <- provenance::read.counts("./hmds_fine.csv")
+mdsmid <- provenance::read.counts("./hmds_medium.csv")
+mdscoarse <- provenance::read.counts("./hmds_coarse.csv")
+
+#INDISCAL
+indiscal<-provenance::indscal(gs, hm, mdsfine, mdsmid, mdscoarse)$gspace 
+
+facspace<-cbind(facies_csv,indiscal)
+
+facspace %>% 
+  ggplot(aes(x=D1,
+             y=D2,
+             color=facies,
+             label=sample))+
+          geom_point(size=2)+
+  geom_label()+
+  theme_minimal()+
+  labs(x="HM",
+       y="Total")
+
+#PROCRUSTES
+facpro <- provenance::procrustes(gs, hm, mdsfine, mdsmid, mdscoarse)
+
+procrustes_coords <- as.data.frame(facpro$points)
+colnames(procrustes_coords) <- c("D1", "D2")
+
+procrustes_coords$sample <- facspace$sample
+
+tabela_facies <- facspace %>% 
+  select(sample, facies) %>%
+  distinct()
+
+plot_df <- left_join(procrustes_coords, tabela_facies, by = "sample") 
+
+plot_df %>%
+  ggplot(aes(x = D1, 
+             y = D2, 
+             color = facies, 
+             label = sample)) +
+  geom_label() +
+  theme_minimal() +
+  labs(x = "Procrustes Dimension 1", y = "Procrustes Dimension 2")
+
+#SOURCE WEIGHTS
+source<-provenance::indscal(gs, hm, mdsfine, mdsmid, mdscoarse)
+
+plot(source, option = 1)
+
+```
+
+
+#9. HM - load data
+```{r}
+#Function
+read_excel_allsheets <- function(filename,samplename, tibble = FALSE) {
+    sheets <- readxl::excel_sheets(filename)
+    x <- lapply(sheets, function(X) readxl::read_xlsx(filename, sheet = X))
+    if(!tibble) x <- lapply(x, as.data.frame)
+    names(x) <- sheets
+
+    l2 <- map(x,~data.frame(.))
+    l3 <-map_dfr(l2,~mutate_all(.,as.character))
+    l4<-as_tibble(l3) %>%
+      mutate(across(.cols=everything(),~str_replace(.x,"-","NA")),
+                                 across(.cols=everything(),as.double),
+                                 sample=samplename) %>%
+      dplyr::select(sample,everything())
+    l4}
+
+#PR-01
+PR_01_100<-read_excel_allsheets("./MSc/HM_raw/PR_01_100.xlsx","PR_01_100")
+PR_01_180_100<-read_excel_allsheets("./MSc/HM_raw/PR_01_180_100.xlsx","PR_01_180_100")
+PR_01_180<-read_excel_allsheets("./MSc/HM_raw/PR_01_180.xlsx","PR_01_180")
+
+#PR-05
+PR_05_100<-read_excel_allsheets("./MSc/HM_raw/PR_05_100.xlsx","PR_05_100")
+PR_05_180_100<-read_excel_allsheets("./MSc/HM_raw/PR_05_180_100.xlsx","PR_05_180_100")
+PR_05_180<-read_excel_allsheets("./MSc/HM_raw/PR_05_180.xlsx","PR_05_180")
+
+#PR-09
+PR_09_100<-read_excel_allsheets("./MSc/HM_raw/PR_09_100.xlsx","PR_09_100")
+PR_09_180_100<-read_excel_allsheets("./MSc/HM_raw/PR_09_180_100.xlsx","PR_09_180_100")
+PR_09_180<-read_excel_allsheets("./MSc/HM_raw/PR_09_180.xlsx","PR_09_180")
+
+#PR-17
+PR_17_100<-read_excel_allsheets("./MSc/HM_raw/PR_17_100.xlsx","PR_17_100")
+PR_17_180_100<-read_excel_allsheets("./MSc/HM_raw/PR_17_180_100.xlsx","PR_17_180_100")
+PR_17_180<-read_excel_allsheets("./MSc/HM_raw/PR_17_180.xlsx","PR_17_180")
+
+#BP-18
+BP_18_100<-read_excel_allsheets("./MSc/HM_raw/BP_18_100.xlsx","BP_18_100")
+BP_18_180_100<-read_excel_allsheets("./MSc/HM_raw/BP_18_180_100.xlsx","BP_18_180_100")
+BP_18_180<-read_excel_allsheets("./MSc/HM_raw/BP_18_180.xlsx","BP_18_180")
+
+#BP-19B
+BP_19B_100<-read_excel_allsheets("./MSc/HM_raw/BP19_B_100.xlsx","BP_19B_100")
+BP_19B_180_100<-read_excel_allsheets("./MSc/HM_raw/BP19_B_180-100.xlsx","BP_19B_180_100")
+BP_19B_180<-read_excel_allsheets("./MSc/HM_raw/BP19_B_180.xlsx","BP_19B_180")
+
+#BP-19D
+BP_19D_100<-read_excel_allsheets("./MSc/HM_raw/BP19_D_100.xlsx","BP_19D_100")
+BP_19D_180_100<-read_excel_allsheets("./MSc/HM_raw/BP19_D_180_100.xlsx","BP_19D_180_100")
+BP_19D_180<-read_excel_allsheets("./MSc/HM_raw/BP19_D_180.xlsx","BP_19D_180")
+
+#BP-20A
+BP_20A_100<-read_excel_allsheets("./MSc/HM_raw/BP20_A_100.xlsx","BP_20A_100")
+BP_20A_180_100<-read_excel_allsheets("./MSc/HM_raw/BP20_A_180_100.xlsx","BP_20A_180_100")
+BP_20A_180<-read_excel_allsheets("./MSc/HM_raw/BP20_A_180.xlsx","BP_20A_180")
+
+#BP-20C
+BP_20C_100<-read_excel_allsheets("./MSc/HM_raw/BP20_C_100.xlsx","BP_20C_100")
+BP_20C_180_100<-read_excel_allsheets("./MSc/HM_raw/BP20_C_180_100.xlsx","BP_20C_180_100")
+BP_20C_180<-read_excel_allsheets("./MSc/HM_raw/BP20_C_180.xlsx","BP_20C_180")
+
+#BP-21B
+BP_21B_100<-read_excel_allsheets("./MSc/HM_raw/BP21_B_100.xlsx","BP_21B_100")
+BP_21B_180_100<-read_excel_allsheets("./MSc/HM_raw/BP21_B_180_100.xlsx","BP_21B_180_100")
+BP_21B_180<-read_excel_allsheets("./MSc/HM_raw/BP21_B_180.xlsx","BP_21B_180")
+
+#BP-21D
+BP_21D_100<-read_excel_allsheets("./MSc/HM_raw/BP21_D_100.xlsx","BP_21D_100")
+BP_21D_180_100<-read_excel_allsheets("./MSc/HM_raw/BP21_D_180_100.xlsx","BP_21D_180_100")
+BP_21D_180<-read_excel_allsheets("./MSc/HM_raw/BP21_D_180.xlsx","BP_21D_180")
+
+#BP-22A
+BP_22A_100<-read_excel_allsheets("./MSc/HM_raw/BP22_A_100.xlsx","BP_22A_100")
+BP_22A_180_100<-read_excel_allsheets("./MSc/HM_raw/BP22_A_180_100.xlsx","BP_22A_180_100")
+BP_22A_180<-read_excel_allsheets("./MSc/HM_raw/BP22_A_180.xlsx","BP_22A_180")
+
+#BP-22B
+BP_22B_100<-read_excel_allsheets("./MSc/HM_raw/BP22_B_100.xlsx","BP_22B_100")
+BP_22B_180_100<-read_excel_allsheets("./MSc/HM_raw/BP22_B_180_100.xlsx","BP_22B_180_100")
+BP_22B_180<-read_excel_allsheets("./MSc/HM_raw/BP22_B_180.xlsx","BP_22B_180")
+
+#BP-23A
+BP_23A_100<-read_excel_allsheets("./MSc/HM_raw/BP23_A_100.xlsx","BP_23A_100")
+BP_23A_180_100<-read_excel_allsheets("./MSc/HM_raw/BP23_A_180_100.xlsx","BP_23A_180_100")
+BP_23A_180<-read_excel_allsheets("./MSc/HM_raw/BP23_A_180.xlsx","BP_23A_180")
+
+#BP-23B
+BP_23B_100<-read_excel_allsheets("./MSc/HM_raw/BP23_B_100.xlsx","BP_23B_100")
+BP_23B_180_100<-read_excel_allsheets("./MSc/HM_raw/BP23_B_180_100.xlsx","BP_23B_180_100")
+BP_23B_180<-read_excel_allsheets("./MSc/HM_raw/BP23_B_180.xlsx","BP_23B_180")
+
+#BP-23C
+BP_23C_100<-read_excel_allsheets("./MSc/HM_raw/BP23_C_100.xlsx","BP_23C_100")
+BP_23C_180_100<-read_excel_allsheets("./MSc/HM_raw/BP23_C_180_100.xlsx","BP_23C_180_100")
+BP_23C_180<-read_excel_allsheets("./MSc/HM_raw/BP23_C_180.xlsx","BP_23C_180")
+
+#BP-23D
+BP_23D_100<-read_excel_allsheets("./MSc/HM_raw/BP23_D_100.xlsx","BP_23D_100")
+BP_23D_180_100<-read_excel_allsheets("./MSc/HM_raw/BP23_D_180_100.xlsx","BP_23D_180_100")
+BP_23D_180<-read_excel_allsheets("./MSc/HM_raw/BP23_D_180.xlsx","BP_23D_180")
+
+#BP-24A
+BP_24A_100<-read_excel_allsheets("./MSc/HM_raw/BP24_A_100.xlsx","BP_24A_100")
+BP_24A_180_100<-read_excel_allsheets("./MSc/HM_raw/BP24_A_180_100.xlsx","BP_24A_180_100")
+BP_24A_180<-read_excel_allsheets("./MSc/HM_raw/BP24_A_180.xlsx","BP_24A_180")
+
+#BP-24B
+BP_24B_100<-read_excel_allsheets("./MSc/HM_raw/BP24_B_100.xlsx","BP_24B_100")
+BP_24B_180_100<-read_excel_allsheets("./MSc/HM_raw/BP24_B_180_100.xlsx","BP_24B_180_100")
+BP_24B_180<-read_excel_allsheets("./MSc/HM_raw/BP24_B_180.xlsx","BP_24B_180")
+
+#BP-24C
+BP_24C_100<-read_excel_allsheets("./MSc/HM_raw/BP24_C_100.xlsx","BP_24C_100")
+BP_24C_180_100<-read_excel_allsheets("./MSc/HM_raw/BP24_C_180_100.xlsx","BP_24C_180_100")
+BP_24C_180<-read_excel_allsheets("./MSc/HM_raw/BP24_C_180.xlsx","BP_24C_180")
+
+```
+
+#10. HM - data cleaning
+```{r}
+HM_df <- 
+  full_join(BP_18_180, BP_18_180_100) %>%
+  full_join(., BP_18_100) %>% 
+  
+  full_join(., PR_01_180) %>% 
+  full_join(., PR_01_180_100) %>% 
+  full_join(., PR_01_100) %>% 
+  
+  full_join(., PR_05_180) %>% 
+  full_join(., PR_05_180_100) %>% 
+  full_join(., PR_05_100) %>%
+  
+  full_join(., PR_09_180) %>% 
+  full_join(., PR_09_180_100) %>% 
+  full_join(., PR_09_100) %>%
+  
+  full_join(., PR_17_180) %>% 
+  full_join(., PR_17_180_100) %>% 
+  full_join(., PR_17_100) %>%
+  
+  full_join(., BP_19B_180) %>% 
+  full_join(., BP_19B_180_100) %>%
+  full_join(., BP_19B_100) %>%
+  
+  full_join(., BP_19D_180) %>%
+  full_join(., BP_19D_180_100) %>% 
+  full_join(., BP_19D_100) %>% 
+  
+  full_join(., BP_20A_180) %>% 
+  full_join(., BP_20A_180_100) %>% 
+  full_join(., BP_20A_100) %>% 
+  
+  full_join(., BP_20C_180) %>% 
+  full_join(., BP_20C_180_100) %>% 
+  full_join(., BP_20C_100) %>% 
+  
+  full_join(., BP_21B_180) %>% 
+  full_join(., BP_21B_180_100) %>% 
+  full_join(., BP_21B_100) %>% 
+  
+  full_join(., BP_21D_180) %>% 
+  full_join(., BP_21D_180_100) %>% 
+  full_join(., BP_21D_100) %>% 
+  
+  full_join(., BP_22A_180) %>% 
+  full_join(., BP_22A_180_100) %>% 
+  full_join(., BP_22A_100) %>% 
+  
+  full_join(., BP_22B_180) %>% 
+  full_join(., BP_22B_180_100) %>% 
+  full_join(., BP_22B_100) %>% 
+  
+  full_join(., BP_23A_180) %>% 
+  full_join(., BP_23A_180_100) %>%
+  full_join(., BP_23A_100) %>%
+  
+  full_join(., BP_23B_180) %>%
+  full_join(., BP_23B_180_100) %>% 
+  full_join(., BP_23B_100) %>% 
+  
+  full_join(., BP_23C_180) %>%
+  full_join(., BP_23C_180_100) %>%
+  full_join(., BP_23C_100) %>% 
+  
+  full_join(., BP_23D_180) %>% 
+  full_join(., BP_23D_180_100) %>% 
+  full_join(., BP_23D_100) %>%
+  
+  full_join(., BP_24A_180) %>% 
+  full_join(., BP_24A_180_100) %>% 
+  full_join(., BP_24A_100) %>% 
+  
+  full_join(., BP_24B_180) %>% 
+  full_join(., BP_24B_180_100) %>%
+  full_join(., BP_24B_100) %>% 
+  
+  full_join(., BP_24C_180) %>% 
+  full_join(., BP_24C_180_100) %>% 
+  full_join(., BP_24C_100) %>% 
+  
+  
+  mutate(across(.cols=C:Y2O3,~na_if(.,0)),
+         across(.cols = C:Y2O3,~replace_na(.x, 0.0001)), # Imputing 000.1 to allow analysis
+         FeO=FeO+Dy2O3,
+         TiO2=TiO2+BaO,
+         id = row_number()) %>%  
+
+  dplyr::select(sample,SiO2,Al2O3,SO3,FeO,TiO2,MgO,MnO,CaO,K2O,Na2O,P2O5,ZrO2,ThO2,BaO,SrO,Mo,Cr2O3,V,ZnO,Pb,Nd2O3,La2O3,Ce2O3,Y2O3,EuO,Gd2O3,Sc,Cd,Te)
+
+write.csv(HM_df, "./MSc/HM_raw/HM_full.csv")
+```
+
+#11. HM - simulation and classification
+```{r}
+#PCA
+K_comp <- provenance::read.compositional("./MSc/HM_raw/HM_full.csv")
+
+set.seed(2020)
+K <- provenance::PCA(K_comp)
+plot(K)
+
+#K-means
+PCA_1_30 <- K$x %>%  
+  as_tibble() %>% 
+  dplyr::select(PC1:PC30) %>% 
+  mutate(id = row_number())
+
+K_MIN <- HM_df %>%  
+  dplyr::select(sample, everything()) %>% 
+  mutate(id = row_number()) %>% 
+  left_join(PCA_1_30, by = "id") %>% 
+  dplyr::select(PC1:PC30)
+
+set.seed(2020)
+
+kmeans_summary <- 
+  tibble(k = 1:100) %>%
+  mutate(
+    kmeans = map(k, ~kmeans(K_MIN, centers = .x, iter.max = 100, nstart = 25)),
+    kmeans_tidy = map(kmeans, tidy),
+    kmeans_glan = map(kmeans, glance),
+    kmeans_augm = map(kmeans, augment, K_MIN)
+  )
+
+clusters_statistics <- kmeans_summary %>%
+  unnest(cols = c(kmeans_glan))
+
+clusters_summary <- kmeans_summary %>%
+  unnest(cols = c(kmeans_tidy))
+
+data_predicted <- kmeans_summary %>% 
+  unnest(cols = c(kmeans_augm))
+
+#datapredict <- saveRDS(data_predicted,"./MSc/HM_raw/K_rds.rds")
+
+# Show the visualisation of predicted clusters across the data - K-means
+(gg_predicted <- ggplot(data_predicted, aes(y = PC2, x = PC1,colour = .cluster)) +
+  geom_jitter(size = 3, alpha = 0.5, width = 2, height = 2) +
+  guides(colour = guide_legend("Clusters")) +
+  labs(
+    y = "PC1",
+    x = "PC2"
+  ) +
+  facet_wrap(~k, ncol = 10))+
+  theme_minimal()
+
+# Elbow Plot
+(gg_elbow <- ggplot(clusters_statistics, aes(k, tot.withinss)) +
+  geom_line(linewidth = 0.5, color = "grey") +
+  geom_point(size = 3, color = "red") +
+  geom_vline(xintercept=13)+
+  annotate("text", x=11.5, y=300000, label= "IDEAL K")+
+  scale_x_continuous(n.breaks = 10, name = "Numero de clusters (k)") +
+  scale_y_continuous(name = "Soma total do quadrado dos clusters") +
+  labs(
+    subtitle = "Elbow method"
+  )+
+    theme_classic())
+
+```
+
+#12. HM - Labeling 
+```{r}
+#datapredicted <- readRDS("./MSc/HM_raw/K_rds.rds")
+
+cluster <- data_predicted %>% filter(k==100) %>% dplyr::select(cluster=.cluster) #cuidar o _ se for usar o RDS
+
+BD <- HM_df %>% cbind(.,cluster)
+
+CLUSTER_ALL <- BD %>% 
+  group_by(cluster) %>% 
+  dplyr::summarise(
+    n = n(),
+    across(SiO2:Te, mean)
+  ) %>% 
+  mutate(
+    total = rowSums(across(SiO2:Te)),  # Verificação da soma
+    across(SiO2:Te, ~ (.x / total) * 100)
+  ) %>% 
+  select(-total) %>% 
+  arrange(cluster)
+
+CLUSTER_SAMPLES<-BD %>% group_by(cluster,sample) %>% 
+    filter(cluster==62) %>% 
+  dplyr::summarise(n=n(),
+                   across(SiO2:Te,mean)) %>% 
+  arrange(cluster)
+
+labels <- tribble(
+  ~cluster, ~mineral,
+      1, "Zircon",
+      2, "Zircon",
+      3, "Fe oxide", 
+      4, "Feldspar", 
+      5, "Monazite", 
+      6, "Garnet", 
+      7, "Ti oxide",
+      8, "Fe-Ti oxide",
+      9, "Garnet",
+      10, "Zircon",
+      11, "Zircon",
+      12, "Fe-Mn oxide",
+      13, "Fe oxide",
+      14, "Zircon",
+      15, "Fe oxide",
+      16, "Fe oxide",
+      17, "Mn oxide",
+      18, "Fe-Ti oxide",
+      19, "Fe oxide",
+      20, "Al PO",
+      21, "Ti oxide",
+      22, "Zircon",
+      23, "Na2O + SO3",
+      24, "Zircon",
+      25, "Zircon",
+      26, "Tourmaline",
+      27, "Tourmaline",
+      28, "Zircon",
+      29, "Zircon",
+      30, "Zircon",
+      31, "Quartz",
+      32, "Zircon",
+      33, "Fe-Ti oxide",
+      34, "Quartz",
+      35, "Fe oxide",
+      36, "Fe oxide",
+      37, "Fe oxide",
+      38, "Tourmaline",
+      39, "Zircon",
+      40, "Tourmaline",
+      41, "Cr spinel",
+      42, "Apatite",
+      43, "Zircon",
+      44, "Fe oxide",
+      45, "Zircon", 
+      46, "Zircon",
+      47, "Cr spinel",
+      48, "Fe-Ti oxide",
+      49, "Fe oxide",
+      50, "Apatite",
+      51, "Monazite",
+      52, "Fe oxide",
+      53, "Fe-Ti oxide",
+      54, "Fe oxide",
+      55, "Ti oxide",
+      56, "Fe-Ti oxide",
+      57, "Fe-Ti oxide",
+      58, "Ti oxide",
+      59, "Fe-To oxide",
+      60, "Fe oxide",
+      61, "Zircon",
+      62, "Zircon",
+      63, "Fe oxide",
+      64, "Zircon",
+      65, "Zircon",
+      66, "Cr spinel",
+      67, "Xenotime",
+      68, "Fe oxide",
+      69, "Quartz",
+      70, "Zircon",
+      71, "Mn oxide",
+      72, "Zircon",
+      73, "Zircon",
+      74, "Ti oxide",
+      75, "Zircon",
+      76, "Fe-Ti oxide",
+      77, "Zircon",
+      78, "Zircon",
+      79, "Cr spinel",
+      80, "Ti oxide",
+      81, "Zircon",
+      82, "Fe-Ti oxide",
+      83, "Tourmaline",
+      84, "Garnet",
+      85, "Fe-Ti oxide",
+      86, "Tourmaline",
+      87, "Mg-Ti oxide",
+      88, "Zircon",
+      89, "Fe oxide",
+      90, "Zircon",
+      91, "Tourmaline",
+      92, "Zircon",
+      93, "Zircon",
+      94, "Zircon",
+      95, "Pb",
+      96, "Ti oxide",
+      97, "Cr spinel",
+      98, "Fe oxide",
+      99, "Zircon",
+      100, "Tourmaline"
+) %>% 
+  mutate(cluster=factor(cluster))
+
+Btest <- BD %>% left_join(.,labels,by="cluster") 
+
+write.csv(Btest %>% dplyr::select(-cluster),
+          "./MSc/HM_raw/minerals.csv")
+```
+
+
+#13. HM - Plot
+```{r}
+colours <- (c(
+  "Apatite" = "steelblue4",
+  "Cr spinel" = "purple",
+  "Fe-Mn oxide" = "firebrick4",
+  "Fe-Ti oxide" = "indianred4",
+  "Fe oxide" = "brown4",
+  "Garnet" = "palegreen4",
+  "Mg-Ti oxide" = "darkred",
+  "Mg spinel" = "purple4",
+  "Mn oxide" = "chocolate4",
+  "Ti oxide" = "deeppink4",
+  "Tourmaline" = "lightpink3",
+  "Xenotime" = "royalblue4",
+  "Monazite" = "khaki",
+  "Zircon" = "plum"
+))
+
+order <- c(
+  "PR_05_180", "PR_05_180_100", "PR_05_100",
+  "PR_09_180", "PR_09_180_100", "PR_09_100",
+  "PR_17_180", "PR_17_180_100", "PR_17_100",
+  "BP_18_180", "BP_18_180_100", "BP_18_100",
+  "BP_19B_180", "BP_19B_180_100", "BP_19B_100",
+  "BP_19D_180", "BP_19D_180_100", "BP_19D_100",
+  "BP_20A_180", "BP_20A_180_100", "BP_20A_100",
+  "BP_21B_180", "BP_21B_180_100", "BP_21B_100",
+  "BP_22A_180", "BP_22A_180_100", "BP_22A_100",
+  "BP_22B_180", "BP_22B_180_100", "BP_22B_100",
+  "BP_20C_180", "BP_20C_180_100", "BP_20C_100",
+  "BP_21D_180", "BP_21D_180_100", "BP_21D_100",
+  "BP_23A_180", "BP_23A_180_100", "BP_23A_100",
+  "BP_23B_180", "BP_23B_180_100", "BP_23B_100",
+  "BP_23C_180", "BP_23C_180_100", "BP_23C_100",
+  "BP_23D_180", "BP_23D_180_100", "BP_23D_100",
+  "BP_24A_180", "BP_24A_180_100", "BP_24A_100",
+  "BP_24B_180", "BP_24B_180_100", "BP_24B_100",
+  "BP_24C_180", "BP_24C_180_100", "BP_24C_100",
+  "PR_01_180", "PR_01_180_100", "PR_01_100"
+)
+
+Btest <- Btest %>%
+  mutate(
+    mineral = factor(mineral, levels = c(
+    "Zircon", "Tourmaline", "Ti oxide", 
+    "Fe-Ti oxide", "Fe oxide", "Fe-Mn oxide", 
+    "Mn oxide", "Mg-Ti oxide", 
+    "Apatite", "Xenotime", "Monazite",
+    "Garnet", "Mg spinel", "Cr spinel"
+  )),
+    sample = factor(sample, levels = order)) %>% 
+  drop_na(mineral) %>% 
+  arrange(sample, mineral)
+
+Btest %>% 
+  group_by(sample, mineral) %>% 
+  count(mineral) %>% 
+  filter(!mineral %in% c("Quartz", "Feldspar", "Na2O + SO3", "Biotite", "Al PO", "Pb")) %>% 
+  ggplot(aes(fill = mineral, y = sample, x = n)) +
+  geom_bar(position = "fill", stat = "identity") +
+  scale_fill_manual(values = colours) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = c(0, 0)) +
+  labs(x = NULL,
+       y = "Proportion (%)",
+       fill = NULL) +
+    theme_minimal()+
+    theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank())
+```
+
+
+#14. HM - facies facet wrap
+```{r}
+facies <- c(
+  "BP_18_180" = "Channel fill",
+  "BP_18_180_100" = "Channel fill",
+  "BP_18_100" = "Channel fill",
+
+  "BP_19B_100" = "Channel fill",
+  "BP_19B_180_100" = "Channel fill",
+  "BP_19B_180" =  "Channel fill",
+
+  "BP_19D_100" = "Floodplain",
+  "BP_19D_180_100" = "Floodplain",
+  "BP_19D_180" = "Floodplain",
+
+  "BP_20A_100" = "Terminal lobes",
+  "BP_20A_180_100" = "Terminal lobes",
+  "BP_20A_180" = "Terminal lobes",
+
+  "BP_20C_100" = "Simple aeolian dunes",
+  "BP_20C_180_100" = "Simple aeolian dunes",
+  "BP_20C_180" = "Simple aeolian dunes",
+
+  "BP_21B_100" = "Channel fill",
+  "BP_21B_180_100" = "Channel fill",
+  "BP_21B_180" = "Channel fill",
+
+  "BP_21D_100" = "Interdune",
+  "BP_21D_180_100" = "Interdune",
+  "BP_21D_180" = "Interdune",
+
+  "BP_22A_100" = "Channel fill",
+  "BP_22A_180_100" = "Channel fill",
+  "BP_22A_180" = "Channel fill",
+
+  "BP_22B_100" = "Floodplain",
+  "BP_22B_180_100" = "Floodplain",
+  "BP_22B_180" = "Floodplain",
+
+  "BP_23A_100" = "Interdune",
+  "BP_23A_180_100" = "Interdune",
+  "BP_23A_180" = "Interdune",
+
+  "BP_23B_100" = "Simple aeolian dunes",
+  "BP_23B_180_100" = "Simple aeolian dunes",
+  "BP_23B_180" = "Simple aeolian dunes",
+
+  "BP_23C_100" = "Aeolian sandsheet",
+  "BP_23C_180_100" = "Aeolian sandsheet",
+  "BP_23C_180" = "Aeolian sandsheet",
+
+  "BP_23D_180" = "Simple aeolian dunes",
+  "BP_23D_180_100" = "Simple aeolian dunes",
+  "BP_23D_100" = "Simple aeolian dunes",
+
+  "BP_24A_100" = "Simple aeolian dunes",
+  "BP_24A_180_100" = "Simple aeolian dunes",
+  "BP_24A_180" = "Simple aeolian dunes",
+
+  "BP_24B_100" = "Aeolian sandsheet",
+  "BP_24B_180_100" = "Aeolian sandsheet",
+  "BP_24B_180" = "Aeolian sandsheet",
+
+  "BP_24C_100" = "Compose aeolian dunes",
+  "BP_24C_180_100" = "Compose aeolian dunes",
+  "BP_24C_180" = "Compose aeolian dunes",
+
+  "PR_01_100" = "Simple aeolian dunes",
+  "PR_01_180_100" = "Simple aeolian dunes",
+  "PR_01_180" = "Simple aeolian dunes",
+
+  "PR_05_180" = "Channel fill",
+  "PR_05_180_100" = "Channel fill",
+  "PR_05_100" = "Channel fill",
+
+  "PR_09_180" = "Channel fill",
+  "PR_09_180_100" = "Channel fill",
+  "PR_09_100" = "Channel fill",
+
+  "PR_17_180" = "Channel fill",
+  "PR_17_180_100" = "Channel fill",
+  'PR_17_100' = "Channel fill"
+)
+
+
+
+HM_facies <- Btest %>%
+  mutate(facies = facies[sample]) %>%
+  mutate(
+    sample_base = gsub("(_180|_180_100|_100)$", "", sample),
+    granulometry_order = case_when(
+      grepl("_180$", sample) ~ 3,      
+      grepl("_180_100$", sample) ~ 2, 
+      grepl("_100$", sample) ~ 1,     
+      TRUE ~ 4 
+    )
+  ) %>%
+  
+  arrange(facies, sample_base, granulometry_order) %>%
+  
+  mutate(sample = factor(sample, levels = unique(sample))) %>%
+  
+  select(-sample_base, -granulometry_order)
+
+
+HM_facies %>%
+  group_by(sample, mineral, facies) %>%
+  count(mineral) %>%
+  filter(!mineral %in% c("Quartz", "Feldspar", "Na2O + SO3", "Biotite", "Al PO", "Pb")) %>%
+  ggplot(aes(fill = mineral, y = sample, x = n)) +
+  geom_bar(position = "fill", stat = "identity") +
+  scale_fill_manual(values = colours) +
+  labs(x = NULL,
+       y = "Proportion (%)",
+       fill = NULL) +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  theme_classic()+
+  facet_wrap(~ facies, scales = "free_y", drop = TRUE)
+
+```
+
+#15. HM - grainize facet warp
+```{r}
+grainsize <- tribble(~sample, ~grainsize, ~simplename, ~facies2,
+                     
+  "BP_18_180" , "coarse", "BP-18", "Channel fill",
+  "BP_18_180_100" , "medium", "BP-18", "Channel fill",
+  "BP_18_100" , "fine", "BP-18", "Channel fill",
+
+  "BP_19B_100" , "fine", "BP-19B", "Channel fill",
+  "BP_19B_180_100", "medium", "BP-19B", "Channel fill",
+  "BP_19B_180" , "coarse", "BP-19B", "Channel fill",
+
+  "BP_19D_100" , "fine", "BP-19D", "Overbank",
+  "BP_19D_180_100" , "medium", "BP-19D", "Overbank",
+  "BP_19D_180" , "coarse", "BP-19D", "Overbank",
+  
+  "BP_20A_100" , "fine", "BP-20A", "Overbank",
+  "BP_20A_180_100" , "medium", "BP-20A", "Overbank",
+  "BP_20A_180" , "coarse", "BP-20A", "Overbank",
+  
+  "BP_20C_100" , "fine", "BP-20C", "Aeolian dunes",
+  "BP_20C_180_100" , "medium", "BP-20C", "Aeolian dunes",
+  "BP_20C_180" , "coarse", "BP-20C", "Aeolian dunes",
+  
+  "BP_21B_100" , "fine", "BP-21B", "Channel fill",
+  "BP_21B_180_100" , "medium", "BP-21B", "Channel fill",
+  "BP_21B_180" , "coarse", "BP-21B", "Channel fill",
+  
+  "BP_21D_100" , "fine", "BP-21D", "Interdune",
+  "BP_21D_180_100" , "medium", "BP-21D", "Interdune",
+  "BP_21D_180" , "coarse", "BP-21D", "Interdune",
+  
+  "BP_22A_100" , "fine", "BP-22A", "Channel fill",
+  "BP_22A_180_100" , "medium", "BP-22A", "Channel fill",
+  "BP_22A_180" , "coarse", "BP-22A", "Channel fill",
+  
+  "BP_22B_100" , "fine", "BP-22B", "Overbank",
+  "BP_22B_180_100" , "medium", "BP-22B", "Overbank",
+  "BP_22B_180" , "coarse", "BP-22B", "Overbank",
+  
+  "BP_23A_100" , "fine", "BP-23A", "Interdune",
+  "BP_23A_180_100" , "medium", "BP-23A", "Interdune",
+  "BP_23A_180" , "coarse", "BP-23A", "Interdune",
+  
+  "BP_23B_100" , "fine", "BP-23B",  "Aeolian dunes",
+  "BP_23B_180_100" , "medium", "BP-23B", "Aeolian dunes",
+  "BP_23B_180" , "coarse", "BP-23B", "Aeolian dunes",
+  
+  "BP_23C_100" , "fine", "BP-23C", "Sandsheet",
+  "BP_23C_180_100" , "medium", "BP-23C", "Sandsheet",
+  "BP_23C_180" , "coarse", "BP-23C", "Sandsheet",
+  
+  "BP_23D_180" , "coarse", "BP-23D",  "Aeolian dunes",
+  "BP_23D_180_100" , "medium", "BP-23D",  "Aeolian dunes",
+  "BP_23D_100" , "fine", "BP-23D",  "Aeolian dunes",
+  
+  "BP_24A_100" , "fine", "BP-24A",  "Aeolian dunes",
+  "BP_24A_180_100" , "medium", "BP-24A", "Aeolian dunes",
+  "BP_24A_180" , "coarse", "BP-24A", "Aeolian dunes",
+  
+  "BP_24B_100" , "fine", "BP-24B",  "Sandsheet",
+  "BP_24B_180_100" , "medium", "BP-24B", "Sandsheet",
+  "BP_24B_180" , "coarse", "BP-24B", "Sandsheet",
+  
+  "BP_24C_100" , "fine", "BP-24C", "Aeolian dunes",
+  "BP_24C_180_100" , "medium", "BP-24C", "Aeolian dunes",
+  "BP_24C_180" , "coarse", "BP-24C",  "Aeolian dunes",
+  
+  "PR_01_180" , "coarse", "PR-01", "Aeolian dunes",
+  "PR_01_180_100" , "medium", "PR-01",  "Aeolian dunes",
+  "PR_01_100" , "fine", "PR-01", "Aeolian dunes",
+  
+  "PR_05_180" , "coarse", "PR-05", "Channel fill",
+  "PR_05_180_100" , "medium", "PR-05",  "Channel fill",
+  "PR_05_100" , "fine", "PR-05",  "Channel fill",
+  
+  "PR_09_180" , "coarse", "PR-09", "Channel fill",
+  "PR_09_180_100" , "medium", "PR-09", "Channel fill",
+  "PR_09_100" , "fine", "PR-09", "Channel fill",
+  
+  "PR_17_180" , "coarse", "PR-17",  "Channel fill",
+  "PR_17_180_100" , "medium", "PR-17", "Channel fill",
+  'PR_17_100' , "fine", "PR-17", "Channel fill",
+)
+
+HM_gs <- HM_facies %>%
+  left_join(grainsize)
+
+
+HM_gs %>% 
+  mutate(grainsize=factor(grainsize, levels= c("fine", "medium", "coarse"))) %>%
+  group_by(sample, mineral, grainsize, facies2, simplename) %>% 
+  count(mineral) %>% 
+  filter(!mineral %in% c("Quartz", "Feldspar", "Na2O + SO3", "Biotite", "Al PO", "Pb")) %>% 
+  ggplot(aes(fill = mineral, y = simplename, x = n)) +
+  geom_bar(position = "fill", stat = "identity") +
+  scale_fill_manual(values = colours) +
+  labs(x = NULL,
+       y = "Proportion (%)",
+       fill = NULL) +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  theme_classic()+
+  facet_wrap(~ grainsize, scales = "free_y", drop = TRUE) 
+```
+
+
+#16. HM - facies + gransize facet wrap
+```{r}
+HM_gs %>% 
+  mutate(grainsize=factor(grainsize, levels= c("fine", "medium", "coarse"))) %>% 
+  group_by(sample, mineral, grainsize, facies2, simplename) %>% 
+  count(mineral) %>% 
+  filter(!mineral %in% c("Quartz", "Feldspar", "Na2O + SO3", "Biotite", "Al PO", "Pb")) %>% 
+  ggplot(aes(fill = mineral, y = simplename, x = n)) +
+  geom_bar(position = "fill", stat = "identity") +
+  scale_fill_manual(values = colours) +
+  labs(x = NULL,
+       y = "Proportion (%)",
+       fill = NULL) +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  theme_classic()+
+  facet_grid(facies2 ~ grainsize, scales = "free_y", drop = TRUE) 
+```
+
+
+#17. HM - Provenance
+```{r}
+HM <- read.csv("./MSc/HM_raw/minerals.csv") %>%
+  filter(!mineral %in% c("Quartz", "Feldspar", "Na2O + SO3", "Biotite", "Al PO", "Pb")) %>%
+  group_by(sample, mineral) %>%
+  count() %>%
+  pivot_wider(names_from = mineral,
+              values_from = n) %>%
+  replace(is.na(.), 0) %>%
+  mutate(ZTR = Zircon + Tourmaline + `Ti oxide`,
+         Oxides = `Mn oxide` + `Fe oxide` + `Fe-Ti oxide` + `Fe-Mn oxide` + `Mg-Ti oxide`) %>%
+  dplyr::select(-Zircon, -Tourmaline, -`Ti oxide`, -`Mn oxide`, -`Fe oxide`, -`Fe-Ti oxide`, -`Fe-Mn oxide`, -`Mg-Ti oxide`) %>%
+  column_to_rownames(var = "sample") %>%
+  as.counts(., method = "chisq", colmap = "rainbow")
+
+GS <- read.csv("./MSc/granulometria_pesados.csv",
+              sep = ",") %>%
+  dplyr::select(sample, sample.1, total) %>%
+  mutate(total = round(as.numeric(gsub(",", ".", total)), digits = 1)) %>%
+  pivot_wider(id_cols = sample, names_from = sample.1, values_from = total) %>%
+  column_to_rownames(var = "sample") %>%
+  as.compositional(.)
+
+provenance::summaryplot(HM, GS)
+```
+
+#18. Mean facies
+```{r}
+HM_agregado <- HM_gs %>%
+  filter(!mineral %in% c("Quartz", "Feldspar", "Na2O + SO3", "Biotite", "Al PO", "Pb")) %>%
+  count(facies2, grainsize, mineral, name = "total_n") %>%
+  mutate(grainsize = factor(grainsize, levels = c("fine", "medium", "coarse")))
+
+ggplot(HM_agregado, aes(fill = mineral, y = facies2, x = total_n)) +
+  geom_bar(position = "fill", stat = "identity") +
+  labs(
+    x = "Proporção (%)",
+    y = "Fácies",
+    fill = "Mineral"
+  ) +
+  scale_fill_manual(values = colours) +
+  theme_classic() +
+  theme(
+    legend.position = "right",
+    axis.text.y = element_text(size = 10)
+  ) +
+  facet_wrap(~ grainsize)
+```
+
+#19. Fluvial x Aeolian
+```{r}
+HM_grupos_consolidados <- HM_gs %>%
+  mutate(
+    grupo_facies = case_when(
+      facies2 %in% c("Channel fill", "Overbank") ~ "Sistema Fluvial",
+      facies2 %in% c("Aeolian dunes", "Interdune", "Sandsheet") ~ "Sistema Eólico",
+      TRUE ~ facies2
+    )
+  ) %>%
+  filter(!mineral %in% c("Quartz", "Feldspar", "Na2O + SO3", "Biotite", "Al PO", "Pb")) %>%
+  count(grupo_facies, grainsize, mineral, name = "total_n") %>%
+  mutate(grainsize = factor(grainsize, levels = c("fine", "medium", "coarse")))
+
+ggplot(HM_grupos_consolidados, aes(fill = mineral, y = grupo_facies, x = total_n)) +
+  geom_bar(position = "fill", stat = "identity") +
+   scale_fill_manual(values = colours) +
+  labs(
+    x = "Proporção (%)",
+    y = "Grupo de Fácies",
+    fill = "Mineral"
+  ) +
+  theme_classic() +
+  theme(
+    legend.position = "right",
+    axis.text.y = element_text(size = 10)
+  ) +
+  facet_wrap(~ grainsize)
+```
+
+
+#20. PETRO - QFL
+```{r}
+QFL<-read.csv("./MSc/QFL.csv",
+              header = TRUE) %>%
+  as_tibble()
+
+QFLlabs <- read.csv("./MSc/qfllabel.csv",
+                    sep = ",") %>% 
+  as_tibble()
+
+
+QFL <- QFL %>%
+  mutate(
+    Q = as.numeric(gsub(",", ".", Q)),
+    F = as.numeric(gsub(",", ".", F)),
+    L = as.numeric(gsub(",", ".", L))
+  )
+
+QFL %>%
+  ggtern(aes(x = F, y = Q, z = L)) +
+  #geom_polygon(data = QFLlabs, aes(fill = label, group = label), alpha = 0.3) +
+  geom_point(aes(fill = facies), 
+             size = 3,         
+             shape = 21,        
+             color = "black", 
+             stroke = 0.5) +    
+  theme_classic() +
+  theme(legend.position = "right")
+
+
+
+lith <- read.csv("./MSc/lith.csv",
+                 header = TRUE) %>% 
+  as_tibble()
+
+lith <- lith %>% 
+  mutate(across(c(Ls, Lv, Lm), ~ as.numeric(gsub(",", ".", .))))
+
+
+ggtern(data = lith, aes(x = Lv, y = Ls, z = Lm)) +
+  geom_point(aes(fill = faceis),
+             size = 3,
+             shape = 21,
+             color = "black",
+             stroke = 0.5) +
+  theme_classic() +
+  theme(legend.position = "right")
+  
+```
+
+
+
+
