@@ -1,0 +1,76 @@
+sample,sample,total,weight,dist,facies
+PR-01,coarse,"90,87232933","0,018429361","43,60410381",Simple aeolian dunes
+PR-01,medium,"7,638515331","0,138723321","27,59103641",Simple aeolian dunes
+PR-01,fine,"1,48255334","0,743373494","28,80485528",Simple aeolian dunes
+PR-05,coarse,"74,8484955","0,03470852","38,20335637",Channel fill
+PR-05,medium,"18,79615126","0,105","29,02270484",Channel fill
+PR-05,fine,"6,354892237","0,350704225","32,77739388",Channel fill
+PR-09,coarse,"99,39196036","0,006887977","40,01268055",Channel fill
+PR-09,medium,"0,551739669","1,085714286","35,75268117",Channel fill
+PR-09,fine,"0,056299966","6,96","23,38707267",Channel fill
+PR-17,coarse,"72,81171078","0,041007434","33,88040807",Channel fill
+PR-17,medium,"20,80334339","0,160044635","46,63441364",Channel fill
+PR-17,fine,"6,384954725","0,408109442","34,97517814",Channel fill
+BP-18,coarse,"94,11660464","0,047524007","31,40866103",Channel fill
+BP-18,medium,"3,136629452","2,302842895","50,72175212",Channel fill
+BP-18,fine,"2,746765905","0,926451613","17,86958686",Channel fill
+BP-19B,coarse,"92,76727685","0,02781848567","37,54337266",Channel fill
+BP-19B,medium,"5,575099875","0,3144385027","25,50312283",Channel fill
+BP-19B,fine,"1,657623278","1,532374101","36,95350451",Channel fill
+BP-19C,coarse,"91,53185435","0,01211859528","39,1627907",Channel fill
+BP-19C,medium,"6,623807767","0,05735879077","13,41395349",Channel fill
+BP-19C,fine,"1,844337883","0,7282857143","47,42325581",Channel fill
+BP-19D,coarse,"56,77764566","0,02160558464","17,15631929",Flood plain
+BP-19D,medium,"27,32857709","0,1752719362","66,99002217",Flood plain
+BP-19D,fine,"15,89377725","0,07132169576","15,85365854",Flood plain
+BP-19E,coarse,"31,57203475","0,009824","34,22519509",Simple aeolian dunes
+BP-19E,medium,"58,76944837","0,002527075812","16,38795987",Simple aeolian dunes
+BP-19E,fine,"9,658516872","0,04633891213","49,38684504",Simple aeolian dunes
+BP-20A,coarse,"36,95722618","0,004690925033","7,067371202",Terminal lobes
+BP-20A,medium,"46,79196371","0,0163434903","31,17569353",Terminal lobes
+BP-20A,fine,"16,25081011","0,1402791625","92,9326288",Terminal lobes
+BP-20C,coarse,"93,83984999","0,01404677324","64,66780239",Simple aeolian dunes
+BP-20C,medium,"4,368358914","0,1225755167","26,26916525",Simple aeolian dunes
+BP-20C,fine,"1,791791097","0,1031007752","9,063032368",Simple aeolian dunes
+BP-21A,coarse,"96,70474669","0,0006822262118","8,296943231",Channel fill
+BP-21A,medium,"2,253550471","0,2719568567","77,07423581",Channel fill
+BP-21A,fine,"1,041702837","0,1116666667","14,62882096",Channel fill
+BP-21B,coarse,"78,68852459","0,1023106061","33,20629457",Channel fill
+BP-21B,medium,"15,29061103","0,9417153996","59,39267273",Channel fill
+BP-21B,fine,"6,020864382","0,298019802","7,401032702",Channel fill
+BP-21D,coarse,"44,39334984","0,0222310757","46,65551839",Interdune
+BP-21D,medium,"25,5571277","0,04401384083","53,17725753",Interdune
+BP-21D,fine,"30,04952246","0,0001177163037","0,1672240803",Interdune
+BP-21E,coarse,"48,78257765","0,00007318501171","21,73913043",Simple aeolian dunes
+BP-21E,medium,"42,95608711","0,0001828457447","47,82608696",Simple aeolian dunes
+BP-21E,fine,"8,261335237","0,0006050129646","30,43478261",Simple aeolian dunes
+BP-22A,coarse,"90,02796714","0,005659644695","41,08527132",Channel fill
+BP-22A,medium,"5,042824681","0,1225303293","49,82381959",Channel fill
+BP-22A,fine,"4,92920818","0,02287234043","9,090909091",Channel fill
+BP-22B,coarse,"41,26696833","0,005570175439","47,3880597",Flood plain
+BP-22B,medium,"28,18099548","0,001027617213","5,970149254",Flood plain
+BP-22B,fine,"30,5520362","0,00740521327","46,64179104",Flood plain
+BP-22C,coarse,"77,43387732","0,03401162791","32,54520167",Compose aeolian dunes
+BP-22C,medium,"17,86156443","0,2218021424","48,95688456",Compose aeolian dunes
+BP-22C,fine,"4,704558244","0,3181818182","18,49791377",Compose aeolian dunes
+BP-23A,coarse,"80,32669729","0,001792069141","15,30944625",Interdune
+BP-23A,medium,"17,55997958","0,04075581395","76,11292074",Interdune
+BP-23A,fine,"2,113323124","0,03816425121","8,577633008",Interdune
+BP-23B,coarse,"74,7404023","0,02040330264","44,67234486",Simple aeolian dunes
+BP-23B,medium,"23,61597342","0,03550251256","24,56109856",Simple aeolian dunes
+BP-23B,fine,"1,643624281","0,6389891697","30,76655658",Simple aeolian dunes
+BP-23C,coarse,"82,70820523","0,00001652073352","0,296735905",Aeolian sandsheet
+BP-23C,medium,"14,53166633","0,01593794076","50,29673591",Aeolian sandsheet
+BP-23C,fine,"2,760128442","0,08242574257","49,40652819",Aeolian sandsheet
+BP-23D,coarse,"74,14112496","0,003168654174","17,47025673",Simple aeolian dunes
+BP-23D,medium,"22,81913102","0,02287822878","38,82279274",Simple aeolian dunes
+BP-23D,fine,"3,039744022","0,1933518006","43,70695053",Simple aeolian dunes
+BP-24A,coarse,"90,3768624","0,0006982156711","12,92639138",Simple aeolian dunes
+BP-24A,medium,"9,202453988","0,04533333333","85,45780969",Simple aeolian dunes
+BP-24A,fine,"0,4206836109","0,01875","1,615798923",Simple aeolian dunes
+BP-24B,coarse,"97,4716153","0,0008613938919","6,547619048",Aeolian sandsheet
+BP-24B,medium,"2,308939987","0,3644628099","65,625",Aeolian sandsheet
+BP-24B,fine,"0,2194447095","1,626086957","27,82738095",Aeolian sandsheet
+BP-24C,coarse,"83,71239912","0,005006573181","39,87783595",Compose aeolian dunes
+BP-24C,medium,"13,46294938","0,0279972752","35,86387435",Compose aeolian dunes
+BP-24C,fine,"2,824651504","0,09025974026","24,2582897",Compose aeolian dunes
