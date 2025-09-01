@@ -1,0 +1,475 @@
+---
+title: "Resultados de campo"
+author: "João Miguel Maraschin Santos"
+date: "2024-08-27"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+#1. Baixar pacotes
+```{r}
+#install.packages("tidyverse") #coleção para datascience
+#install.packages("tidyterra") #coleção para mapas
+#install.packages("geobr") #base de dados ibge
+#install.packages("elevatr") #base de datos de elevação
+#install.packages("terra") #análise de dados espaciais 
+#install.packages("sf") #"tidyverse" para dados espaciais 
+#install.packages("sp") #suporte mapview
+#install.packages("ggspatial") #recursos gráficos para plots
+#install.packages("mapview") #Google maps
+#install.packages("rnaturalearthhires") #shp dos países
+#install.packages("rnaturalearthdata") #shp dos países
+#install.packages("rayshader") #render3D
+#install.packages("devtools") #ferramentas do desenvolvedor 
+#install.packages("ggmap") #map tools
+#install.packages("raster") #ler imagens raster
+#install.packages("prettymapr) #raster
+#install.packages("remotes") #basemap
+#install.packages("map1tiles") #basemap
+#install.packages("data.table") #tratar dados de tabela
+#install.packages("rgplates") #paleomap
+#install.packages("chronosphere") #paleomap
+#install.packages("ggmap") #raster 
+```
+
+
+#2. Instalar pacotes
+```{r}
+library(tidyverse)
+library(tidyterra)
+library(geobr)
+library(elevatr)
+library(terra)
+library(sf)
+library(sp)
+library(ggspatial)
+library(mapview)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(rayshader)
+library(devtools)
+library(raster)
+library(prettymapr)
+library(remotes)
+library(maptiles)
+library(data.table)
+library(rgplates)
+library(chronosphere)
+library(ggmap)
+```
+
+#3. Baixar dados
+```{r}
+bp <- st_read("./MSc/Arquivos/BP.shp") %>% 
+  st_transform(crs = 32722)
+
+pt_bp <- st_read("./MSc/Arquivos/pb_points.shp") %>% 
+  st_transform(crs = 32722) 
+
+area <- st_read("./MSc/Arquivos/Area1.shp") %>% 
+  st_transform(crs = 32722)
+
+area_geo <- st_intersection(bp, area)
+
+brasil <- read_state(code_state = "all", 2020) %>% 
+  st_transform(crs = 32722)
+
+drenagens <- st_read("./MSc/Arquivos/Drenagens_-_1_1_000_000.shp") %>%
+  st_transform(crs = 32722) %>%
+  st_intersection(area)
+
+#SRTM
+elev_bp <- get_elev_raster(locations = bp, z = 6) #Raster elevação
+mask_bp <- mask(elev_bp,bp) #Máscara elevação - Bacia do Parnaíba
+spdf_bp <- as(mask_bp, "SpatialPixelsDataFrame") #Raster - SPDF
+df_bp <- as.data.frame(spdf_bp) #SPDF - DF
+colnames(df_bp) <- c("elevation", "x", "y") #Parâmetros DF
+
+
+#Shaded Relief - regional
+elevations <- elevatr::get_elev_raster(
+  locations = bp, z = 7, clip = 'locations')
+elevations <- as.data.frame(elevations, xy = TRUE)
+colnames(elevations)[3] <- 'elevation'
+elevations <- elevations[complete.cases(elevations), ]
+
+
+#Shaded Relief - local
+elevations2 <- elevatr::get_elev_raster(
+  locations = area, z = 10, clip = 'locations')
+elevations2 <- as.data.frame(elevations2, xy = TRUE)
+colnames(elevations2)[3] <- 'elevation'
+elevations2 <- elevations2[complete.cases(elevations2), ]
+```
+
+#4. Filtrar e editar
+```{r}
+#Piaui
+fm_piaui <- bp %>%
+  mutate(other = case_when(
+    NOME %in% c("Grupo Serra Grande", "Formação Itaim", "Formação Pimenteira", "Formação Cabeças", "Formação Longá", "Formação Poti", "Formação Pedra de Fogo", "Formação Motuca", "Formação Sambaíba", "Formação Mosquito", "Formação Pastos Bons", "Formação Sardinha", "Formação Corda", "Formação Grajaú", "Formação Codó", "Grupo Itapecuru", "Grupo Urucuia", "Grupo Areado", "Formação Ipixuna", "Formação Melancia", "Litofácies Termometamorfito Mucambo") ~ "Preenchimento Sedimentar",
+    
+    ERA_MAX %in% c("Cenozóico") ~ "Cobertura Cenozóica",
+    
+    EON_MAX %in% c("Proterozóico", "Arqueano") ~ "Embasamento",
+    
+    NOME %in% c("Formação Piauí") ~ "Formação Piauí"
+  )) %>%
+  
+  mutate(basin = ifelse(other == "Bacia", NOME, other),
+         basin = factor(basin, levels = c("Formação Piauí"))) %>%
+  
+  filter(!is.na(basin))
+
+#database topo
+#elevations2 <- elevations2 %>%
+#  slice(-c(540459, 541171, 539747, 540458, 541172, 541170, 539746))
+
+```
+
+
+#5. Funções
+```{r}
+#Shaded Relief
+geom_relief <- function(mapping = NULL, data = NULL,
+                        stat = "identity", position = "identity",
+                        ...,
+                        raster = TRUE,
+                        interpolate = TRUE,
+                        na.rm = FALSE,
+                        show.legend = NA,
+                        inherit.aes = TRUE) {
+   ggplot2::layer(
+      data = data,
+      mapping = mapping,
+      stat = stat,
+      geom = GeomRelief,
+      position = position,
+      show.legend = show.legend,
+      inherit.aes = inherit.aes,
+      params = list(
+         raster = raster,
+         interpolate = interpolate,
+         na.rm = na.rm,
+         ...
+      )
+   )
+}
+
+GeomRelief <- ggplot2::ggproto("GeomRelief", GeomTile,
+  required_aes = c("x", "y", "z"),
+  default_aes = ggplot2::aes(color = NA, fill = "grey35", linewidth = 0.5, linetype = 1,
+                             alpha = NA, light = "white", dark = "gray20", sun.angle = 60),
+  draw_panel = function(data, panel_scales, coord, raster, interpolate) {
+     if (!coord$is_linear()) {
+        stop("non lineal coordinates are not implemented in GeomRelief", call. = FALSE)
+     } else {
+        coords <- as.data.table(coord$transform(data, panel_scales))
+        
+        coords[, sun.angle := (sun.angle + 90)*pi/180]
+        coords[, dx := .derv(z, x), by = y]
+        coords[, dy := .derv(z, y), by = x]
+        coords[, shade := (cos(atan2(-dy, -dx) - sun.angle) + 1)/2]
+        coords[is.na(shade), shade := 0]
+        coords[, fill := .rgb2hex(colorRamp(c(dark, light), space = "Lab")(shade)),
+               by = .(dark, light)]
+
+        if (raster == TRUE) {
+           if (!inherits(coord, "CoordCartesian")) {
+              stop("geom_raster only works with Cartesian coordinates", call. = FALSE)
+           }
+           x_pos <- as.integer((coords$x - min(coords$x)) / resolution(coords$x, FALSE))
+           y_pos <- as.integer((coords$y - min(coords$y)) / resolution(coords$y, FALSE))
+
+           nrow <- max(y_pos) + 1
+           ncol <- max(x_pos) + 1
+           
+           raster <- matrix(NA_character_, nrow = nrow, ncol = ncol)
+           raster[cbind(nrow - y_pos, x_pos + 1)] <- alpha(coords$fill, coords$alpha)
+
+           x_rng <- c(min(coords$xmin, na.rm = TRUE), max(coords$xmax, na.rm = TRUE))
+           y_rng <- c(min(coords$ymin, na.rm = TRUE), max(coords$ymax, na.rm = TRUE))
+
+           grid::rasterGrob(raster,
+                            x = mean(x_rng), y = mean(y_rng),
+                            width = diff(x_rng), height = diff(y_rng),
+                            default.units = "native", interpolate = interpolate)
+        } else {
+           ggplot2:::ggname("geom_rect", grid::rectGrob(
+              coords$xmin, coords$ymax,
+              width = coords$xmax - coords$xmin,
+              height = coords$ymax - coords$ymin,
+              default.units = "native",
+              just = c("left", "top"),
+              gp = grid::gpar(
+                 col = coords$fill,
+                 fill = alpha(coords$fill, coords$alpha),
+                 lwd = coords$linewidth * .pt,
+                 lty = coords$linetype,
+                 lineend = "butt"
+              )
+           ))
+        }
+     }
+  }
+)
+
+
+rect_to_poly <- function(xmin, xmax, ymin, ymax) {
+   data.frame(
+      y = c(ymax, ymax, ymin, ymin, ymax),
+      x = c(xmin, xmax, xmax, xmin, xmin)
+   )
+}
+
+.rgb2hex <- function(array) {
+   rgb(array[, 1], array[, 2], array[, 3], maxColorValue = 255)
+}
+
+
+.derv <- function(x, y, order = 1, cyclical = FALSE, fill = FALSE) {
+   N <- length(x)
+   d <- y[2] - y[1]
+   if (order >= 3) {
+      dxdy <- .derv(.derv(x, y, order = 2, cyclical = cyclical, fill = fill),
+                    y, order = order - 2, cyclical = cyclical, fill = fill)
+   } else {
+      if (order == 1) {
+         dxdy <- (x[c(2:N, 1)] - x[c(N, 1:(N-1))])/(2*d)
+      } else if (order == 2) {
+         dxdy <- (x[c(2:N, 1)] + x[c(N, 1:(N-1))] - 2*x)/d^2
+      }
+      if (!cyclical) {
+         if (!fill) {
+            dxdy[c(1, N)] <- NA
+         }
+         if (fill) {
+            dxdy[1] <- (-11/6*x[1] + 3*x[2] - 3/2*x[3] + 1/3*x[4])/d
+            dxdy[N] <- (11/6*x[N] - 3*x[N-1] + 3/2*x[N-2] - 1/3*x[N-3])/d
+         }
+      }
+      
+   }
+   return(dxdy)
+}
+
+theme_gppr <- function(){ 
+    
+    theme_void() %+replace%    # replace elements we want to change
+    
+    theme(
+      plot.title = element_text(
+                   margin = margin(b = 2),
+                   size = 14,
+                   color = 'black',
+                   face = 'bold',
+                   hjust = 0),
+      
+      plot.subtitle = element_text(
+                   margin = margin(b = 2),
+                   size = 12,
+                   color = 'black',
+                   face = 'italic',
+                   hjust = 0),
+      
+      plot.caption = element_text(hjust = 0, size = 8),
+      
+      legend.position = 'right',
+      legend.title = element_text(size = 9),
+      legend.text = element_text(size = 9)
+    )
+}
+```
+
+
+#6. Localização - América do Sul
+```{r}
+
+```
+
+
+#7. Localização - relevo sombreado regional + formações
+```{r}
+bp %>%
+  mutate(other = case_when(
+    NOME %in% c("Grupo Serra Grande", "Formação Ipu", "Formação Tianguá", "Formação Jaicós") ~ "Sequência Siluriana",
+    
+    NOME %in% c("Formação Itaim", "Formação Pimenteira", "Formação Cabeças", "Formação Longá", "Formação Poti") ~ "Sequência Mesodevoniana-Eocarbonífera",
+    
+    NOME %in% c("Formação Piauí", "Formação Pedra de Fogo", "Formação Motuca", "Formação Sambaíba") ~ "Sequência Neocarbonífera-Eotriássica",
+    
+    NOME %in% c("Formação Mosquito") ~ "Formação Mosquito",
+    
+    NOME %in% c("Formação Pastos Bons") ~ "Sequência Jurássica",
+    
+    NOME %in% c("Formação Sardinha") ~ "Formação Sardinha",
+    
+    NOME %in% c("Grupo Itapecuru Itapecuru", "Formação Corda", "Formação Grajaú", "Formação Codó") ~ "Sequência Cretácea",
+    
+    ERA_MAX %in% c("Mesozóico") ~ "Cobertura Mesozóica",
+    
+    ERA_MAX %in% c("Cenozóico") ~ "Cobertura Cenozóica",
+    
+    EON_MAX %in% c("Proterozóico", "Arqueano") ~ "Embasamento"
+  )) %>% 
+  
+  mutate(basin = ifelse(other == "Bacia", NOME, other),
+    
+    basin = factor(basin, levels = c("Cobertura Cenozóica", "Cobertura Mesozóica", "Sequência Cretácea", "Formação Sardinha", "Sequência Jurássica", "Formação Mosquito", "Sequência Neocarbonífera-Eotriássica", "Sequência Mesodevoniana-Eocarbonífera", "Sequência Siluriana", "Embasamento"))
+    
+  ) %>% 
+  
+ filter(!is.na(basin)) %>%
+  
+  ggplot() +
+  geom_relief(data = elevations,
+              aes(x = x, y = y, z = elevation, light = 'white', dark = 'grey20'), 
+              raster = FALSE, interpolate = TRUE, sun.angle = 60) +
+  geom_sf(aes(fill = basin), alpha = 0.5, col = "transparent", na.rm = TRUE) +
+  geom_sf(data = area, color = "red", fill = "transparent", linewidth = 1) +
+  labs(x = NULL, y = NULL, fill = NULL)  +
+  theme_void() +
+  scale_fill_manual(values = c("yellow2", "cyan3", "green4", "green1", "skyblue3", "midnightblue", "aquamarine4", "olivedrab", "seagreen1", "red")) +
+  theme(legend.position = "bottom")+
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tl")
+  
+
+```
+
+
+#8. Localização - relevo sombreado local + formações
+```{r}
+area_geo %>%
+  mutate(other = case_when(
+    NOME %in%
+      c("Grupo Serra Grande", "Formação Itaim", "Formação Pimenteira", "Formação Cabeças", "Formação Longá", "Formação Poti", "Formação Piauí", "Formação Pedra de Fogo", "Formação Motuca", "Formação Sambaíba", "Formação Mosquito", "Formação Pastos Bons", "Formação Sardinha", "Formação Corda", "Formação Grajaú", "Formação Codó", "Grupo Itapecuru") ~ "Bacia",
+        
+    ERA_MAX %in%
+      c("Mesozóico") ~ "Cobertura Mesozóica",
+    
+    ERA_MAX %in%
+      c("Cenozóico") ~ "Cobertura Cenozóica",
+
+    
+    EON_MAX %in%
+      
+      c("Proterozóico", "Arqueano") ~ "Embasamento"
+  )) %>% 
+  
+  mutate(basin = ifelse(other == "Bacia", NOME, other),
+    
+    basin = factor(basin, levels = c("Cobertura Cenozóica", "Cobertura Mesozóica", "Grupo Itapecuru", "Formação Codó", "Formação Grajaú", "Formação Corda", "Formação Sardinha", "Formação Pastos Bons",  "Formação Mosquito", "Formação Sambaíba", "Formação Motuca", "Formação Pedra de Fogo", "Formação Piauí", "Formação Poti", "Formação Longá", "Formação Cabeças", "Formação Pimenteira", "Formação Itaim", "Grupo Serra Grande",  "Embasamento"))
+    
+  ) %>% 
+  
+   filter(!is.na(basin)) %>%
+
+  ggplot() +
+  #geom_relief(data = elevations2,
+  #           aes(x = x, y = y, z = elevation, light = 'white', dark = 'grey20'), 
+  #          raster = FALSE, interpolate = TRUE, sun.angle = 45) +
+  geom_sf(aes(fill = basin), alpha = 0.5, col = "transparent") +
+  geom_sf(data = drenagens, fill = "blue", col = "blue")+
+  geom_sf(data = area_geo, fill = "transparent", color = "transparent", linewidth = 2) +
+  geom_sf(data = pt_bp, shape = "●", size = 3, col = "red") +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  theme_classic() +
+  scale_fill_manual(values = c("springgreen2", "darkgreen", "orchid3", "indianred3", "aquamarine4", "darkcyan"))+
+  annotation_scale(location = "br") +
+  #annotation_north_arrow(location = "tl") +
+  labs(fill = "Formações")
+```
+
+
+
+#9. Localização - relevo hispométrico
+```{r}
+hipso <- colorRampPalette(c("lightgreen", "lightyellow", "peachpuff", "lightsalmon", "lightcoral", "mistyrose", "white"))(100)
+
+
+ggplot()+
+  geom_tile(data = df_bp, aes(x = x, y = y, fill = elevation))+
+  scale_fill_gradientn(colors = hipso, limits = c(0, max(df_bp$elevation)), breaks = seq(0, max(df_bp$elevation), by = 100)) +
+  theme_classic()+
+  annotation_scale(location = "bl")+
+  annotation_north_arrow(location = "tr")+
+  labs(title = "Mapa de Elevação",
+       subtitle = "Bacia do Parnaíba",
+       caption = "ElevatR - Amazon Web Services",
+       fill = "Elevação")
+```
+
+
+
+#10. Rayshader -  Hispo
+```{r}
+ggdf_bp <- elevations2 %>% 
+  ggplot() +
+    geom_tile(aes(x = x, y = y, fill = elevation)) +
+    scale_fill_gradientn(colors = hipso, limits = c(0, max(elevations2$elevation)), breaks = seq(0, max(df_bp$elevation), by = 100)) +
+    theme_classic()
+
+
+plot_gg(ggdf_bp, multicore = TRUE, raytrace = TRUE, width = 10, height = 10, 
+        scale = 50, windowsize = c(1400, 866), zoom = 1 , phi = 30, theta = 30)
+
+```
+
+
+
+#11. Rayshader  - bacia
+```{r}
+elev_high <- get_elev_raster(locations = area, z = 8) 
+mask_high <- mask(elev_high,area) 
+plot(mask_high)
+
+writeRaster(mask_high, "./Produtos/elev.tif", overwrite = TRUE)
+
+elmat <- raster_to_matrix("./Produtos/elev.tif")
+
+elmat %>%
+  sphere_shade(texture = "desert") %>%
+   add_water(detect_water(elmat), color = "imhof4") %>%
+   add_shadow(ray_shade(elmat), 1) %>%
+   add_shadow(ambient_shade(elmat), 0) %>%
+   plot_3d(elmat, zscale = 20, zoom = 10, windowsize = c(1000, 1000, water=TRUE)) 
+
+#render_highquality(min_variance = 0, sample_method = "sobol_blue") 
+#render_snapshot()
+```
+
+
+#12. Gondwana
+```{r}
+coastlines <- reconstruct("coastlines", age=300, model="MERDITH2021")
+plates <- reconstruct("plate_polygons", age = 300, model="MERDITH2021")
+edge <- mapedge()
+
+#Robinson 
+epsg <- "ESRI:54030"
+coastsRob <- sf::st_transform(coastlines, crs=epsg)
+platesRob <- sf::st_transform(plates, crs=epsg)
+edgeRob <- sf::st_transform(edge, crs=epsg)
+
+# plot
+plot(edgeRob)
+plot(coastsRob, border=NA, col="grey", add=TRUE)
+```
+
+
+```{r}
+ggplot() +
+  geom_sf(data = platesRob, aes(fill = name), alpha = 0.3) +
+  scale_fill_manual(values = c("#0047AB", "#0056B3", "#0066C2", "#0075D1", "#0084E0", 
+           "#0093E6", "#00A2E6", "#00B1E6", "#00C0E6", "#2DB9E6", 
+           "#55B2E6", "#7BBCE6", "#A0C6E6", "#C6D2E6", "#E0E7E6", 
+           "#D1E7F6", "#9cc4db"))+
+  geom_sf(data = coastsRob, fill = "green4", color = "green4") +
+  theme_minimal()
+
+```
+
+
+
