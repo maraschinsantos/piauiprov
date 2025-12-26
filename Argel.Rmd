@@ -1,0 +1,138 @@
+---
+title: "Artigo Argel"
+author: "João Miguel Maraschin Santos, 2024"
+date: "2025-11-26"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+#1. Install packages
+```{r}
+library(tidyverse)
+library(tidyterra)
+library(geobr)
+library(elevatr)
+library(terra)
+library(sf)
+library(sp)
+library(ggspatial)
+library(mapview)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(rnaturalearthhires)
+library(rayshader)
+library(devtools)
+```
+
+#2. Load files
+```{r}
+BP <- st_read("./Arquivos/BP.shp") %>% 
+  st_transform(crs = 32722)
+
+FL <- read_municipality(code_muni = 2203909, 2020)
+CV <- read_municipality(code_muni = 2202251, 2020)
+FP <- read_municipality(code_muni = 2203800, 2020)
+GP <- read_municipality(code_muni = 2204501, 2020)
+IT <- read_municipality(code_muni = 2205102, 2020)
+JR <- read_municipality(code_muni = 2205300, 2020)
+NZ <- read_municipality(code_muni = 2206704, 2020)
+PV <- read_municipality(code_muni = 2207850, 2020)
+RG <- read_municipality(code_muni = 2209005, 2020)
+SF <- read_municipality(code_muni = 2209708, 2020)
+SJ <- read_municipality(code_muni = 2210102, 2020)
+SM <- read_municipality(code_muni = 2210391, 2020)
+
+reg <- rbind(FL, CV, FP, GP, IT, JR, NZ, PV, RG, SF, SJ, SM) %>% 
+  st_union() %>% 
+  st_transform(crs = 32722)
+
+sa <- ne_countries(continent = "south america", scale = "large")
+fra <- ne_countries(country = "france", scale = "large")
+
+sa_comp <- st_union(sa,fra)
+
+riv <- st_read("./GEOFT_BHO_TRECHO_DRENAGEM.shp") %>% 
+  st_transform(crs = 32722) %>% 
+  filter(NOORIGINAL == "Rio Parnaíba")
+
+allriv <- st_read("./zipfolder/Drenagens_-_1_1_000_000.shp") %>% 
+  st_transform(crs = 32722)
+
+rod <- st_read("GEOFT_TRECHO_RODOVIARIO_FEDERAL.shp") %>% 
+  st_transform(crs = 32722) %>% 
+  st_intersection(BP) %>% 
+  filter(vl_br %in% c("343", "230", "135"))
+```
+
+#3. Mapping
+```{r}
+BP %>%
+  mutate(other = case_when(
+    NOME %in% c("Grupo Serra Grande", "Formação Ipu", "Formação Tianguá", "Formação Jaicós") ~ "Silurian Sequence",
+    
+    NOME %in% c("Formação Itaim", "Formação Pimenteira", "Formação Cabeças", "Formação Longá", "Formação Poti") ~ "Mesodevonian-Eocarboniferous Sequence",
+    
+    NOME %in% c("Formação Piauí", "Formação Pedra de Fogo", "Formação Motuca", "Formação Sambaíba") ~ "Neocarboniferous-Eotriassic Sequence",
+    
+    NOME %in% c("Formação Mosquito") ~ "Mosquito Formation",
+    
+    NOME %in% c("Formação Pastos Bons") ~ "Pastos Bons Formation",
+    
+    NOME %in% c("Formação Sardinha") ~ "Sardinha Formation",
+    
+    NOME %in% c("Grupo Itapecuru Itapecuru", "Formação Corda", "Formação Grajaú", "Formação Codó") ~ "Cretaceous Sequence",
+    
+    ERA_MAX %in% c("Mesozóico") ~ "Mesozoic Cover",
+    
+    ERA_MAX %in% c("Cenozóico") ~ "Cenozoic Cover",
+    
+    EON_MAX %in% c("Proterozóico", "Arqueano") ~ "Precambrian Basement"
+  )) %>% 
+  
+  mutate(basin = ifelse(other == "Bacia", NOME, other),
+    
+    basin = factor(basin, levels = c("Cenozoic Cover", "Mesozoic Cover", "Cretaceous Sequence", "Sardinha Formation", "Pastos Bons Formation", "Mosquito Formation", "Neocarboniferous-Eotriassic Sequence", "Mesodevonian-Eocarboniferous Sequence", "Silurian Sequence", "Precambrian Basement"))
+    
+  ) %>% 
+  
+ filter(!is.na(basin)) %>%
+  
+  ggplot() +
+  geom_sf(aes(fill = basin), alpha = 0.75, col = "transparent", na.rm = TRUE) +
+  geom_sf(data = reg, col = "red", fill = "transparent")+
+  geom_sf(data = rod, color = "black", size = 0.6, linetype = "twodash")+
+  geom_sf(data = riv, col = "blue", fill = "blue")+
+  labs(x = NULL, y = NULL, fill = NULL)  +
+ scale_fill_manual(values = c("khaki1",          #cenozoic
+                              "paleturquoise2",  #mesozoic
+                              "#A3D03D"      ,   #cretaceous
+                              "green4",          #sardinha
+                              "red",             #pastos bons
+                              "#7F7F6F",         #mosquito
+                              "aquamarine2",     #neocarboniferous
+                              "olivedrab1",      #mesodevonian
+                              "#CB8D5E",         #silurian
+                              "#FBD0C5"))+       #basement
+  theme_bw()+
+  theme(legend.position = "bottom")+
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tl", style = north_arrow_nautical())+
+  coord_sf(datum = st_crs(BP)) 
+```
+
+#4. SA mapping
+```{r}
+ggplot()+
+  geom_sf(data = sa_comp, fill = "paleturquoise", alpha = 0.5)+
+  geom_sf(data = BP, fill = "khaki", col = "transparent")+
+  xlim(-85, -30)+
+  ylim(-60, 15)+
+  theme_void()
+  
+```
+
+
+```{r}
+mapview(allriv)
+```
+
